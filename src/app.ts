@@ -37,8 +37,10 @@ export async function buildApp({ config, logger = true }: BuildAppOptions): Prom
     root: publicDir,
     // The probe is iterated on a device with an opaque cache. Never serve a
     // stale build while we are still finding out what the runtime supports.
-    setHeaders(res) {
-      res.setHeader('cache-control', 'no-store');
+    // @fastify/static v10 hands this callback a FastifyReply (v8 passed a raw
+    // ServerResponse, which had setHeader instead).
+    setHeaders(reply) {
+      reply.header('cache-control', 'no-store');
     },
   });
 
