@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="description" content="Create and manage api.video live streams and copy their RTMP ingest credentials." />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Live stream control</title>
+    <link rel="icon" type="image/png" sizes="128x128" href="/favicon.png" />
+    <link rel="stylesheet" href="/control/control.css" />
+  </head>
+  <body>
+    <header class="page-header">
+      <h1>Live stream control</h1>
+      <p class="sub" id="env-line">checking server…</p>
+    </header>
+
+    <main>
+      <section class="card">
+        <h2>New stream</h2>
+        <form id="create-form" class="create-form">
+          <label class="field">
+            <span>Name</span>
+            <input id="create-name" type="text" maxlength="120" required placeholder="Workshop camera" />
+          </label>
+          <label class="checkbox">
+            <input id="create-public" type="checkbox" checked />
+            <span>Public (uncheck for a private stream — playback then needs a token)</span>
+          </label>
+          <button type="submit" class="primary" id="create-submit">Create stream</button>
+        </form>
+      </section>
+
+      <section class="card">
+        <div class="list-header">
+          <h2>Paired devices</h2>
+          <button type="button" class="primary" id="pair-button">Pair a device</button>
+        </div>
+        <p class="status" id="pair-status" role="status" aria-live="polite"></p>
+        <p class="pair-code" id="pair-code" hidden></p>
+        <div id="devices"></div>
+      </section>
+
+      <section>
+        <div class="list-header">
+          <h2>Streams</h2>
+          <button type="button" id="refresh" class="ghost">Refresh</button>
+        </div>
+        <p class="status" id="status" role="status" aria-live="polite">loading…</p>
+        <div id="streams"></div>
+      </section>
+    </main>
+
+    <template id="stream-template">
+      <article class="card stream">
+        <div class="stream-head">
+          <h3 class="stream-name"></h3>
+          <span class="dot" title="ingest state"></span>
+          <span class="state-label"></span>
+          <span class="badge visibility"></span>
+        </div>
+        <p class="meta"><code class="stream-id"></code> · created <span class="created"></span></p>
+
+        <div class="stream-body">
+          <div class="fields">
+            <div class="field-row">
+              <span class="field-label">RTMP server</span>
+              <code class="value rtmp-server"></code>
+              <button type="button" class="copy" data-copy="rtmp-server">Copy</button>
+            </div>
+            <div class="field-row">
+              <span class="field-label">Stream key</span>
+              <code class="value stream-key secret"></code>
+              <button type="button" class="copy" data-copy="stream-key">Copy</button>
+              <button type="button" class="ghost reveal">Show</button>
+            </div>
+            <div class="field-row">
+              <span class="field-label">RTMP URL</span>
+              <code class="value rtmp-url secret"></code>
+              <button type="button" class="copy" data-copy="rtmp-url">Copy</button>
+            </div>
+            <div class="field-row">
+              <span class="field-label">RTMPS URL</span>
+              <code class="value rtmps-url secret"></code>
+              <button type="button" class="copy" data-copy="rtmps-url">Copy</button>
+            </div>
+            <div class="field-row">
+              <span class="field-label">SRT URL</span>
+              <code class="value srt-url secret"></code>
+              <button type="button" class="copy" data-copy="srt-url">Copy</button>
+            </div>
+            <div class="field-row">
+              <span class="field-label">HLS playback</span>
+              <code class="value hls"></code>
+              <button type="button" class="copy" data-copy="hls">Copy</button>
+            </div>
+          </div>
+
+          <figure class="qr">
+            <img class="qr-img" alt="QR code of the ingest URL" width="160" height="160" />
+            <figcaption>
+              Scan in Larix Broadcaster
+              <select class="qr-protocol" aria-label="QR protocol">
+                <option value="rtmp">RTMP</option>
+                <option value="rtmps">RTMPS</option>
+                <option value="srt">SRT</option>
+              </select>
+            </figcaption>
+          </figure>
+        </div>
+
+        <div class="stream-actions">
+          <button type="button" class="ghost check-status">Check status</button>
+          <button type="button" class="danger delete">Delete</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="/control/control.js"></script>
+  </body>
+</html>

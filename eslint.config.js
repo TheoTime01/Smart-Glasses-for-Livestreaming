@@ -9,10 +9,21 @@ export default tseslint.config(
     extends: [...tseslint.configs.recommended],
   },
   {
-    files: ['scripts/**/*.mjs'],
+    files: ['scripts/**/*.mjs', 'e2e/**/*.mjs'],
     languageOptions: {
-      globals: { console: 'readonly', process: 'readonly', Buffer: 'readonly', fetch: 'readonly' },
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+        Buffer: 'readonly',
+        fetch: 'readonly',
+        URL: 'readonly',
+      },
     },
+  },
+  {
+    files: ['e2e/**/*.ts', 'playwright.config.ts', 'vitest.config.ts'],
+    extends: [...tseslint.configs.recommended],
+    languageOptions: { globals: { process: 'readonly', window: 'readonly', document: 'readonly' } },
   },
   {
     // Browser code: ES5-flavoured vanilla JS, no bundler.
@@ -38,6 +49,11 @@ export default tseslint.config(
         Uint8Array: 'readonly',
         createImageBitmap: 'readonly',
         isFinite: 'readonly',
+        localStorage: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        HTMLElement: 'readonly',
+        KeyboardEvent: 'readonly',
       },
     },
   },

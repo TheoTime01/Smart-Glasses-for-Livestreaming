@@ -1,0 +1,313 @@
+/* Control page — a normal desktop/phone browser, not the glasses.
+   None of the MRBD display constraints apply here. */
+
+:root {
+  --bg: #0b0d10;
+  --surface: #14161a;
+  --surface-2: #1c1e21;
+  --border: #2a2f36;
+  --text: #e4e6eb;
+  --muted: #9aa0a6;
+  --accent: #00d4ff;
+  --live: #35e07a;
+  --off: #6b7280;
+  --danger: #ff5c5c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 32px 24px 64px;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+main,
+.page-header {
+  max-width: 940px;
+  margin: 0 auto;
+}
+
+.page-header h1 {
+  margin: 0 0 4px;
+  font-size: 28px;
+}
+
+.sub {
+  margin: 0 0 24px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+h2 {
+  font-size: 20px;
+  margin: 0 0 12px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.field span {
+  display: block;
+  font-size: 14px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+input[type='text'] {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+}
+
+input[type='text']:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+button {
+  font: inherit;
+  border-radius: 8px;
+  padding: 9px 16px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.primary {
+  align-self: flex-start;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #04212a;
+  font-weight: 600;
+}
+
+button.danger {
+  color: var(--danger);
+  border-color: #4a2b2b;
+}
+
+button.copy {
+  padding: 5px 10px;
+  font-size: 13px;
+}
+
+.list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.status {
+  color: var(--muted);
+  font-size: 14px;
+  min-height: 20px;
+}
+
+.status.error {
+  color: var(--danger);
+}
+
+.stream-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.stream-name {
+  margin: 0;
+  font-size: 19px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--off);
+}
+
+.dot.live {
+  background: var(--live);
+  box-shadow: 0 0 0 4px rgba(53, 224, 122, 0.18);
+}
+
+.state-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.badge {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.badge.private {
+  color: #ffc53d;
+  border-color: #4a3f1f;
+}
+
+.meta {
+  margin: 6px 0 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.stream-body {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.fields {
+  flex: 1 1 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field-label {
+  flex: 0 0 110px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.value {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 7px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Stream keys are credentials — masked until explicitly revealed, so a shared
+   screen or a screenshot does not leak them. */
+.value.secret.masked {
+  color: transparent;
+  text-shadow: 0 0 7px rgba(228, 230, 235, 0.85);
+}
+
+.qr {
+  margin: 0;
+  text-align: center;
+}
+
+.qr-img {
+  background: #fff;
+  border-radius: 8px;
+  padding: 6px;
+}
+
+.qr figcaption {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.qr-protocol {
+  display: block;
+  margin: 6px auto 0;
+  padding: 4px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.stream-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 14px;
+  padding: 20px 0;
+}
+
+.pair-code {
+  margin: 12px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 44px;
+  letter-spacing: 12px;
+  color: var(--accent);
+  text-align: center;
+}
+
+.device {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.device .device-name {
+  font-size: 16px;
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+
+.device .device-meta {
+  color: var(--muted);
+  flex: 1 1 auto;
+}

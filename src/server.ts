@@ -1,8 +1,21 @@
+import { ApiVideoClient } from './apivideo/client.js';
 import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
+
+  // Fail fast on a bad key: better a refused startup than a control page that
+  // 502s on every action. A *missing* key is a supported mode — see app.ts.
+  if (config.apiVideoKey) {
+    const client = new ApiVideoClient({
+      apiKey: config.apiVideoKey,
+      environment: config.apiVideoEnv,
+      ...(config.apiVideoBaseUrl ? { baseUrl: config.apiVideoBaseUrl } : {}),
+    });
+    await client.authenticate();
+  }
+
   const app = await buildApp({ config });
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {

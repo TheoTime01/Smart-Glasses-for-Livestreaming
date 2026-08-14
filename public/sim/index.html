@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="description" content="Desktop harness for the Meta Ray-Ban Display live viewer: hosts /glasses in a 600x600 frame and forwards D-pad input." />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Glasses simulator</title>
+    <link rel="icon" type="image/png" sizes="128x128" href="/favicon.png" />
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #000;
+        color: #e4e6eb;
+        font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0;
+        font-weight: 600;
+      }
+      .stage {
+        width: 600px;
+        height: 600px;
+        border: 1px solid #2a2f36;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #000;
+        flex: 0 0 auto;
+      }
+      iframe {
+        width: 600px;
+        height: 600px;
+        border: 0;
+        display: block;
+      }
+      .pad {
+        display: grid;
+        grid-template-columns: repeat(3, 64px);
+        grid-template-rows: repeat(3, 52px);
+        gap: 8px;
+      }
+      button {
+        background: #1c1e21;
+        color: #e4e6eb;
+        border: 1px solid #2a2f36;
+        border-radius: 8px;
+        font: inherit;
+        font-size: 18px;
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: #00d4ff;
+      }
+      .wide {
+        grid-column: span 3;
+        font-size: 14px;
+      }
+      .up {
+        grid-column: 2;
+      }
+      .row-mid {
+        grid-column: 1 / span 3;
+        display: grid;
+        grid-template-columns: repeat(3, 64px);
+        gap: 8px;
+      }
+      .note {
+        color: #9aa0a6;
+        font-size: 13px;
+        max-width: 600px;
+        text-align: center;
+      }
+      code {
+        background: #1c1e21;
+        padding: 1px 5px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Glasses simulator — 600×600, D-pad only</h1>
+
+    <div class="stage">
+      <iframe id="frame" src="/glasses/" title="Glasses app"></iframe>
+    </div>
+
+    <div class="pad">
+      <button type="button" class="up" data-key="ArrowUp">▲</button>
+      <div class="row-mid">
+        <button type="button" data-key="ArrowLeft">◀</button>
+        <button type="button" data-key="Enter">⏎</button>
+        <button type="button" data-key="ArrowRight">▶</button>
+      </div>
+      <button type="button" class="up" data-key="ArrowDown">▼</button>
+      <button type="button" class="wide" data-key="Escape">Escape (back gesture)</button>
+    </div>
+
+    <p class="note">
+      Your arrow keys, <code>Enter</code> and <code>Escape</code> are forwarded into the frame, so you can
+      drive it from the keyboard. The buttons dispatch the same synthetic events — that is all the glasses
+      ever send. Reload the frame after changing the app.
+    </p>
+
+    <script>
+      (function () {
+        'use strict';
+        var frame = document.getElementById('frame');
+        var KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape'];
+
+        /** Same-origin, so we can dispatch a real KeyboardEvent inside the frame. */
+        function send(key) {
+          var doc = frame.contentDocument;
+          if (!doc) return;
+          doc.dispatchEvent(new KeyboardEvent('keydown', { key: key, bubbles: true, cancelable: true }));
+          frame.contentWindow.focus();
+        }
+
+        document.querySelectorAll('.pad button').forEach(function (button) {
+          button.addEventListener('click', function () {
+            send(button.dataset.key);
+          });
+        });
+
+        window.addEventListener('keydown', function (event) {
+          if (KEYS.indexOf(event.key) === -1) return;
+          event.preventDefault();
+          send(event.key);
+        });
+      })();
+    </script>
+  </body>
+</html>
