@@ -1,9 +1,7 @@
-import { timingSafeEqual } from 'node:crypto';
-
-import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyPluginAsync } from 'fastify';
 import QRCode from 'qrcode';
 
-import { ApiVideoError } from '../apivideo/types.js';
+import { hasControlToken, UNAUTHORIZED } from '../auth/control-token.js';
 import type { AppConfig } from '../config.js';
 import {
   INGEST_PROTOCOLS,
@@ -18,24 +16,27 @@ interface StreamRoutesOptions {
   service: StreamService | null;
 }
 
+/**
+ * Routes that may take the control token from the query string. Only the QR
+ * image qualifies: it is loaded through an `<img src>`, which cannot send a
+ * header. Everywhere else the token would be written to access and proxy logs
+ * for no reason.
+ */
+const QUERY_TOKEN_ROUTES = new Set(['/api/streams/:id/qr.png']);
+
 export const streamRoutes: FastifyPluginAsync<StreamRoutesOptions> = async (fastify, options) => {
   const { config, service } = options;
 
   /**
    * The control API hands out RTMP credentials and can create billable api.video
    * resources, and it is typically reachable through a public tunnel. If
-   * CONTROL_TOKEN is set every route below requires it. Pairing-based auth for
-   * the glasses arrives in M2; this is the interim guard for /control.
+   * CONTROL_TOKEN is set every route below requires it. The glasses use device
+   * tokens instead — see `routes/pairing.ts`.
    */
   fastify.addHook('preHandler', async (request, reply) => {
-    if (!config.controlToken) return;
-    const provided =
-      (request.headers['x-control-token'] as string | undefined) ??
-      (request.query as Record<string, string | undefined>).control_token;
-
-    if (!provided || !safeEqual(provided, config.controlToken)) {
-      return reply.code(401).send({ error: 'unauthorized', message: 'Missing or invalid control token.' });
-    }
+    const allowQueryParam = QUERY_TOKEN_ROUTES.has(request.routeOptions.url ?? '');
+    if (hasControlToken(request, config.controlToken, { allowQueryParam })) return;
+    return reply.code(401).send(UNAUTHORIZED);
   });
 
   fastify.addHook('preHandler', async (_request, reply) => {
@@ -45,6 +46,10 @@ export const streamRoutes: FastifyPluginAsync<StreamRoutesOptions> = async (fast
       message: 'API_VIDEO_KEY is not set. Copy .env.example to .env and add your api.video key.',
     });
   });
+
+  // The hook above answers before any handler runs when api.video is
+  // unconfigured, so this is the single place that null is discharged.
+  const streams = service as StreamService;
 
   fastify.post<{ Body: { name?: unknown; public?: unknown } }>('/api/streams', async (request, reply) => {
     const body = request.body ?? {};
@@ -59,25 +64,25 @@ export const streamRoutes: FastifyPluginAsync<StreamRoutesOptions> = async (fast
       return reply.code(400).send({ error: 'invalid_request', message: 'public must be a boolean' });
     }
 
-    const stream = await service!.create(name, body.public !== false);
+    const stream = await streams.create(name, body.public !== false);
     request.log.info({ liveStreamId: stream.id, public: stream.public }, 'live stream created');
     return reply.code(201).send(stream);
   });
 
-  fastify.get('/api/streams', async () => ({ streams: await service!.list() }));
+  fastify.get('/api/streams', async () => ({ streams: await streams.list() }));
 
   fastify.get<{ Params: { id: string } }>('/api/streams/:id', async (request) =>
-    service!.get(request.params.id),
+    streams.get(request.params.id),
   );
 
   fastify.delete<{ Params: { id: string } }>('/api/streams/:id', async (request, reply) => {
-    await service!.remove(request.params.id);
+    await streams.remove(request.params.id);
     request.log.info({ liveStreamId: request.params.id }, 'live stream deleted');
     return reply.code(204).send();
   });
 
   fastify.get<{ Params: { id: string } }>('/api/streams/:id/status', async (request, reply) => {
-    const status = await service!.status(request.params.id);
+    const status = await streams.status(request.params.id);
     // Let intermediaries cache for the same window the service does.
     reply.header('cache-control', `public, max-age=${Math.floor(config.statusCacheTtlMs / 1000)}`);
     return status;
@@ -85,7 +90,7 @@ export const streamRoutes: FastifyPluginAsync<StreamRoutesOptions> = async (fast
 
   fastify.get<{ Params: { id: string } }>('/api/streams/:id/playback', async (request, reply) => {
     reply.header('cache-control', 'no-store'); // may carry a private-stream token
-    return service!.playback(request.params.id);
+    return streams.playback(request.params.id);
   });
 
   /**
@@ -104,7 +109,7 @@ export const streamRoutes: FastifyPluginAsync<StreamRoutesOptions> = async (fast
         });
       }
 
-      const stream = await service!.get(request.params.id);
+      const stream = await streams.get(request.params.id);
       if (!stream.ingest.streamKey) {
         return reply.code(404).send({ error: 'no_stream_key', message: 'This stream has no stream key.' });
       }
@@ -116,29 +121,8 @@ export const streamRoutes: FastifyPluginAsync<StreamRoutesOptions> = async (fast
         errorCorrectionLevel: 'M',
       });
 
+      // The QR encodes the stream key. Never cache it, anywhere.
       return reply.header('content-type', 'image/png').header('cache-control', 'no-store').send(png);
     },
   );
-
-  // api.video failures become honest HTTP statuses instead of opaque 500s.
-  fastify.setErrorHandler((error, request: FastifyRequest, reply: FastifyReply) => {
-    if (error instanceof ApiVideoError) {
-      request.log.error({ err: error, status: error.status, detail: error.detail }, 'api.video call failed');
-      const status = error.status === 404 ? 404 : error.status === 400 ? 400 : 502;
-      return reply.code(status).send({
-        error: 'api_video_error',
-        message: error.message,
-        detail: error.detail || undefined,
-      });
-    }
-    request.log.error({ err: error }, 'unhandled error in stream routes');
-    return reply.code(500).send({ error: 'internal_error', message: 'Unexpected server error.' });
-  });
 };
-
-function safeEqual(a: string, b: string): boolean {
-  const left = Buffer.from(a);
-  const right = Buffer.from(b);
-  if (left.length !== right.length) return false;
-  return timingSafeEqual(left, right);
-}

@@ -1,7 +1,6 @@
-import { timingSafeEqual } from 'node:crypto';
-
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 
+import { hasControlToken, UNAUTHORIZED } from '../auth/control-token.js';
 import { PairingError, type PairingService } from '../auth/pairing.js';
 import type { AppConfig } from '../config.js';
 import type { StreamService } from '../streams/service.js';
@@ -20,19 +19,19 @@ interface PairingRoutesOptions {
  */
 const CLAIM_WINDOW_MS = 60_000;
 
+/**
+ * Ceiling on tracked clients. Without one, an IP that ever tried to claim stays
+ * in the map for the life of the process — a slow leak any open internet host
+ * will find.
+ */
+const MAX_TRACKED_CLIENTS = 5_000;
+
 export const pairingRoutes: FastifyPluginAsync<PairingRoutesOptions> = async (fastify, options) => {
   const { config, pairing, service } = options;
   const claimAttempts = new Map<string, number[]>();
 
   function requireControlToken(request: FastifyRequest): boolean {
-    if (!config.controlToken) return true;
-    const provided =
-      (request.headers['x-control-token'] as string | undefined) ??
-      (request.query as Record<string, string | undefined>).control_token;
-    if (!provided) return false;
-    const left = Buffer.from(provided);
-    const right = Buffer.from(config.controlToken);
-    return left.length === right.length && timingSafeEqual(left, right);
+    return hasControlToken(request, config.controlToken);
   }
 
   fastify.addHook('preHandler', async (_request, reply) => {
@@ -43,12 +42,30 @@ export const pairingRoutes: FastifyPluginAsync<PairingRoutesOptions> = async (fa
     });
   });
 
+  // The hook above answers before any handler runs when pairing is
+  // unconfigured, so this is the single place that null is discharged.
+  const pairingService = pairing as PairingService;
+
+  /** Attempts inside the current window, after dropping everything stale. */
+  function recentAttempts(ip: string, now: number): number[] {
+    for (const [client, attempts] of claimAttempts) {
+      const newest = attempts[attempts.length - 1] ?? 0;
+      if (now - newest >= CLAIM_WINDOW_MS) claimAttempts.delete(client);
+    }
+    // Still full of live entries: evict the least recently inserted rather than
+    // locking everyone out.
+    while (claimAttempts.size >= MAX_TRACKED_CLIENTS) {
+      const oldest = claimAttempts.keys().next();
+      if (oldest.done || oldest.value === ip) break;
+      claimAttempts.delete(oldest.value);
+    }
+    return (claimAttempts.get(ip) ?? []).filter((at) => now - at < CLAIM_WINDOW_MS);
+  }
+
   /** Control page mints a code for the wearer to type. */
   fastify.post('/api/pair', async (request, reply) => {
-    if (!requireControlToken(request)) {
-      return reply.code(401).send({ error: 'unauthorized', message: 'Missing or invalid control token.' });
-    }
-    const created = pairing!.createCode();
+    if (!requireControlToken(request)) return reply.code(401).send(UNAUTHORIZED);
+    const created = pairingService.createCode();
     request.log.info({ expiresAt: created.expiresAt }, 'pairing code issued');
     return reply.code(201).send(created);
   });
@@ -58,7 +75,7 @@ export const pairingRoutes: FastifyPluginAsync<PairingRoutesOptions> = async (fa
     '/api/pair/claim',
     async (request, reply) => {
       const now = Date.now();
-      const recent = (claimAttempts.get(request.ip) ?? []).filter((at) => now - at < CLAIM_WINDOW_MS);
+      const recent = recentAttempts(request.ip, now);
       if (recent.length >= config.pairClaimLimit) {
         return reply
           .code(429)
@@ -75,7 +92,7 @@ export const pairingRoutes: FastifyPluginAsync<PairingRoutesOptions> = async (fa
       const deviceName = typeof body.deviceName === 'string' ? body.deviceName.trim() : 'Glasses';
 
       try {
-        const { token, device } = await pairing!.claim(code, deviceName);
+        const { token, device } = await pairingService.claim(code, deviceName);
         request.log.info({ deviceId: device.id, name: device.name }, 'device paired');
         return reply.code(201).send({ token, device });
       } catch (error) {
@@ -88,17 +105,13 @@ export const pairingRoutes: FastifyPluginAsync<PairingRoutesOptions> = async (fa
   );
 
   fastify.get('/api/devices', async (request, reply) => {
-    if (!requireControlToken(request)) {
-      return reply.code(401).send({ error: 'unauthorized', message: 'Missing or invalid control token.' });
-    }
-    return { devices: pairing!.listDevices(), pendingCodes: pairing!.pendingCount() };
+    if (!requireControlToken(request)) return reply.code(401).send(UNAUTHORIZED);
+    return { devices: pairingService.listDevices(), pendingCodes: pairingService.pendingCount() };
   });
 
   fastify.delete<{ Params: { id: string } }>('/api/devices/:id', async (request, reply) => {
-    if (!requireControlToken(request)) {
-      return reply.code(401).send({ error: 'unauthorized', message: 'Missing or invalid control token.' });
-    }
-    const removed = await pairing!.revoke(request.params.id);
+    if (!requireControlToken(request)) return reply.code(401).send(UNAUTHORIZED);
+    const removed = await pairingService.revoke(request.params.id);
     if (!removed) return reply.code(404).send({ error: 'not_found', message: 'No such device.' });
     request.log.info({ deviceId: request.params.id }, 'device revoked');
     return reply.code(204).send();
@@ -118,7 +131,7 @@ export const pairingRoutes: FastifyPluginAsync<PairingRoutesOptions> = async (fa
       return { ok: false, body: { error: 'unauthorized', message: 'Pair this device first.' } };
     }
     try {
-      await pairing!.authenticate(token);
+      await pairingService.authenticate(token);
       return { ok: true };
     } catch (error) {
       if (error instanceof PairingError) {

@@ -130,10 +130,12 @@ export class ApiVideoClient {
     if (!force && this.#token && Date.now() < this.#token.expiresAt - TOKEN_SKEW_MS) {
       return this.#token;
     }
-    if (this.#pendingAuth) return this.#pendingAuth;
+    // A forced authentication must not adopt an in-flight lazy one: the startup
+    // credential check would then "pass" on a token minted before it ran.
+    if (!force && this.#pendingAuth) return this.#pendingAuth;
 
     const previous = this.#token;
-    this.#pendingAuth = (async () => {
+    const pending = (async () => {
       // Prefer the cheaper refresh when we already hold a refresh token.
       if (!force && previous) {
         try {
@@ -144,12 +146,14 @@ export class ApiVideoClient {
       }
       return this.#exchange('/auth/api-key', { apiKey: this.#apiKey });
     })();
+    this.#pendingAuth = pending;
 
     try {
-      this.#token = await this.#pendingAuth;
+      this.#token = await pending;
       return this.#token;
     } finally {
-      this.#pendingAuth = null;
+      // Only clear our own: a concurrent forced auth may have replaced it.
+      if (this.#pendingAuth === pending) this.#pendingAuth = null;
     }
   }
 

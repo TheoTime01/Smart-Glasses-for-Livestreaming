@@ -17,6 +17,12 @@ import type { ApiVideoLiveStream } from '../apivideo/types.js';
  */
 const PLAYBACK_REFRESH_SECONDS = 240;
 
+/**
+ * Ceiling on remembered statuses. Streams deleted from the api.video dashboard
+ * are never seen here again, so without a cap their entries live forever.
+ */
+const STATUS_CACHE_MAX = 500;
+
 /** What the frontends see. Deliberately not the raw api.video shape. */
 export interface StreamSummary {
   id: string;
@@ -144,6 +150,20 @@ export class StreamService {
 
   #rememberStatus(id: string, broadcasting: boolean): void {
     this.#statusCache.set(id, { checkedAt: Date.now(), broadcasting });
+    if (this.#statusCache.size > STATUS_CACHE_MAX) this.#evictStatuses();
+  }
+
+  #evictStatuses(): void {
+    const now = Date.now();
+    for (const [id, entry] of this.#statusCache) {
+      // Past its TTL it would be re-fetched anyway, so it is pure overhead.
+      if (now - entry.checkedAt >= this.#statusTtlMs) this.#statusCache.delete(id);
+    }
+    // Still over budget (a very long TTL): drop least-recently-added first.
+    for (const id of this.#statusCache.keys()) {
+      if (this.#statusCache.size <= STATUS_CACHE_MAX) break;
+      this.#statusCache.delete(id);
+    }
   }
 }
 

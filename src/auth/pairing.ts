@@ -1,5 +1,5 @@
 import { randomInt, randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import { signDeviceToken, verifyDeviceToken, JwtError } from './jwt.js';
@@ -16,6 +16,15 @@ interface PendingCode {
   code: string;
   expiresAt: number;
 }
+
+/**
+ * How stale `lastSeenAt` is allowed to get before it is written to disk again.
+ * Without this, every single glasses request rewrites the whole device file.
+ */
+const LAST_SEEN_WRITE_INTERVAL_MS = 60_000;
+
+/** Bounds the pending-code list; codes also expire on their own TTL. */
+const MAX_PENDING_CODES = 100;
 
 export class PairingError extends Error {
   readonly reason: 'invalid_code' | 'expired_code' | 'invalid_token' | 'revoked';
@@ -41,6 +50,8 @@ export class PairingService {
   readonly #storePath: string;
   #pending: PendingCode[] = [];
   #devices = new Map<string, PairedDevice>();
+  /** Tail of the write chain, so two requests never interleave a save. */
+  #writes: Promise<void> = Promise.resolve();
 
   constructor(secret: string, ttlSeconds: number, storePath: string) {
     this.#secret = secret;
@@ -59,9 +70,28 @@ export class PairingService {
     }
   }
 
-  async #persist(): Promise<void> {
+  /**
+   * Saves are serialised through one chain: concurrent glasses requests each
+   * rewrite the whole file, and two of them interleaving would leave a torn
+   * store that unpairs every device on the next boot.
+   */
+  #persist(): Promise<void> {
+    const next = this.#writes.then(
+      () => this.#writeStore(),
+      () => this.#writeStore(), // a failed save must not poison the chain
+    );
+    this.#writes = next.catch(() => undefined);
+    return next;
+  }
+
+  async #writeStore(): Promise<void> {
     await mkdir(dirname(this.#storePath), { recursive: true });
-    await writeFile(this.#storePath, JSON.stringify([...this.#devices.values()], null, 2), 'utf8');
+    const payload = JSON.stringify([...this.#devices.values()], null, 2);
+    // Write-then-rename: a crash mid-write leaves the previous file intact
+    // instead of a truncated one that no longer parses.
+    const temporary = `${this.#storePath}.${process.pid}.tmp`;
+    await writeFile(temporary, payload, 'utf8');
+    await rename(temporary, this.#storePath);
   }
 
   /** Mints a 6-digit code. Called by the control page. */
@@ -71,6 +101,10 @@ export class PairingService {
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     const expiresAt = Date.now() + this.#ttlMs;
     this.#pending.push({ code, expiresAt });
+    // Oldest first, so a burst of unclaimed codes cannot grow without bound.
+    if (this.#pending.length > MAX_PENDING_CODES) {
+      this.#pending.splice(0, this.#pending.length - MAX_PENDING_CODES);
+    }
     return {
       code,
       expiresAt: new Date(expiresAt).toISOString(),
@@ -113,9 +147,14 @@ export class PairingService {
       throw new PairingError('revoked', 'This device has been removed. Pair it again.');
     }
 
-    // Cheap enough to write through; the file holds a handful of records.
-    device.lastSeenAt = new Date().toISOString();
-    await this.#persist();
+    // Kept in memory always, written at most once a minute per device: the
+    // glasses call this on every request and the file holds every record.
+    const now = Date.now();
+    const lastWritten = Date.parse(device.lastSeenAt);
+    device.lastSeenAt = new Date(now).toISOString();
+    if (!Number.isFinite(lastWritten) || now - lastWritten >= LAST_SEEN_WRITE_INTERVAL_MS) {
+      await this.#persist();
+    }
     return device;
   }
 

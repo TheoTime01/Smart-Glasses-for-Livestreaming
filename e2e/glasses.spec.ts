@@ -130,6 +130,26 @@ test('the stream list paginates instead of scrolling, and Left/Right moves pages
   await expect(page.locator('#list-pager')).toHaveText(`1–${firstPage} of ${total}`);
 });
 
+test('stepping off the last row of a page turns the page, rather than wrapping', async ({ page }) => {
+  await pair(page);
+
+  const total = 7;
+  const perPage = await page.locator('.stream-row').count();
+  await expect(page.locator('#list-pager')).toHaveText(`1–${perPage} of ${total}`);
+
+  // Down through the whole first page: the last press must reach stream 6, not
+  // wrap back to stream 1 and strand the overflow behind a Right press.
+  for (let step = 0; step < perPage; step += 1) await page.keyboard.press('ArrowDown');
+
+  await expect(page.locator('#list-pager')).toHaveText(`${perPage + 1}–${total} of ${total}`);
+  await expect(page.locator('.stream-row').first()).toBeFocused();
+
+  // And back up over the boundary, onto the last row of the first page.
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('#list-pager')).toHaveText(`1–${perPage} of ${total}`);
+  await expect(page.locator('.stream-row').last()).toBeFocused();
+});
+
 test('Escape returns from the viewer to the list', async ({ page }) => {
   await pair(page);
   await page.keyboard.press('Enter');

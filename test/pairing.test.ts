@@ -209,6 +209,41 @@ describe('device-authenticated glasses API', () => {
     expect(response.statusCode).toBe(200);
   });
 
+  it('refuses an expired device token', async () => {
+    await build();
+    await pairDevice();
+
+    const { devices } = (await app.inject({ method: 'GET', url: '/api/devices' })).json<{
+      devices: Array<{ id: string }>;
+    }>();
+    // Same device, same secret — only the lifetime differs.
+    const stale = signDeviceToken(devices[0]?.id ?? '', SECRET, -1);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/glasses/streams',
+      headers: { authorization: `Bearer ${stale}` },
+    });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('survives concurrent requests without tearing the device store', async () => {
+    await build();
+    const token = await pairDevice();
+    const headers = { authorization: `Bearer ${token}` };
+
+    // Every one of these updates lastSeenAt and may persist; interleaved writes
+    // used to be able to leave the file unparseable.
+    await Promise.all(
+      Array.from({ length: 20 }, () => app.inject({ method: 'GET', url: '/api/glasses/streams', headers })),
+    );
+    await app.close();
+
+    await build();
+    const after = await app.inject({ method: 'GET', url: '/api/glasses/streams', headers });
+    expect(after.statusCode).toBe(200);
+  });
+
   it('answers 503 when JWT_SECRET is unset', async () => {
     await build({ jwtSecret: undefined });
     const response = await app.inject({ method: 'POST', url: '/api/pair' });

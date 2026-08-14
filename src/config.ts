@@ -41,14 +41,51 @@ export interface AppConfig {
   jwtSecret: string | undefined;
 }
 
-function int(name: string, fallback: number): number {
+interface IntRange {
+  min?: number;
+  max?: number;
+}
+
+/**
+ * A misconfigured number must fail at startup, not at the first request.
+ * `parseInt` is too forgiving for that — it reads "8080abc" as 8080 and "0x10"
+ * as 0 — so the value has to be a plain integer and land inside its range.
+ */
+function int(name: string, fallback: number, { min = 0, max = Number.MAX_SAFE_INTEGER }: IntRange = {}): number {
   const raw = process.env[name];
-  if (raw === undefined || raw === '') return fallback;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed)) {
+  if (raw === undefined || raw.trim() === '') return fallback;
+
+  const trimmed = raw.trim();
+  if (!/^-?\d+$/.test(trimmed)) {
     throw new Error(`Invalid ${name}: expected an integer, got "${raw}"`);
   }
+  const parsed = Number.parseInt(trimmed, 10);
+  if (parsed < min || parsed > max) {
+    throw new Error(`Invalid ${name}: expected an integer between ${min} and ${max}, got ${parsed}`);
+  }
   return parsed;
+}
+
+/**
+ * The glasses runtime and service workers both require HTTPS, so a plain-http
+ * PUBLIC_BASE_URL is a deployment mistake worth catching at startup rather than
+ * on the device. localhost is exempt — it is the documented dev setup.
+ */
+function url(name: string, { requireHttps = false } = {}): string | undefined {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === '') return undefined;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(raw.trim());
+  } catch {
+    throw new Error(`Invalid ${name}: expected an absolute URL, got "${raw}"`);
+  }
+  const isLocal = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+  if (requireHttps && parsed.protocol !== 'https:' && !isLocal) {
+    throw new Error(`Invalid ${name}: the glasses runtime requires HTTPS, got "${parsed.protocol}//"`);
+  }
+  return parsed.origin + (parsed.pathname === '/' ? '' : parsed.pathname.replace(/\/$/, ''));
 }
 
 /**
@@ -68,14 +105,15 @@ export function loadConfig(): AppConfig {
   }
 
   return {
-    port: int('PORT', 3000),
+    port: int('PORT', 3000, { min: 1, max: 65_535 }),
     host: str('HOST', '0.0.0.0'),
-    publicBaseUrl: process.env.PUBLIC_BASE_URL || undefined,
+    publicBaseUrl: url('PUBLIC_BASE_URL', { requireHttps: true }),
     dataDir: str('DATA_DIR', 'data'),
     probeLogDir: str('PROBE_LOG_DIR', 'data/probe'),
-    pairingCodeTtl: int('PAIRING_CODE_TTL', 300),
-    pairClaimLimit: int('PAIR_CLAIM_LIMIT', 10),
-    probeMemoryLimit: int('PROBE_MEMORY_LIMIT', 50),
+    // 0 is allowed: it makes every code expire on issue, which the tests use.
+    pairingCodeTtl: int('PAIRING_CODE_TTL', 300, { min: 0, max: 86_400 }),
+    pairClaimLimit: int('PAIR_CLAIM_LIMIT', 10, { min: 1, max: 1_000 }),
+    probeMemoryLimit: int('PROBE_MEMORY_LIMIT', 50, { min: 1, max: 10_000 }),
     // Apple's public HLS reference stream. Verified to send
     // `Access-Control-Allow-Origin: *`, which the MSE/hls.js path needs.
     sampleHlsUrl: str(
@@ -88,19 +126,27 @@ export function loadConfig(): AppConfig {
     ),
     apiVideoKey: process.env.API_VIDEO_KEY || undefined,
     apiVideoEnv,
-    apiVideoBaseUrl: process.env.API_VIDEO_BASE_URL || undefined,
+    apiVideoBaseUrl: url('API_VIDEO_BASE_URL'),
     controlToken: process.env.CONTROL_TOKEN || undefined,
-    statusCacheTtlMs: int('STATUS_CACHE_TTL_MS', 5000),
+    statusCacheTtlMs: int('STATUS_CACHE_TTL_MS', 5000, { min: 0, max: 300_000 }),
     jwtSecret: process.env.JWT_SECRET || undefined,
   };
 }
 
 /**
  * Fail fast, with a message that says exactly what to set and where.
- * Called by the milestone that actually needs the variable.
+ * Called by the milestone that actually needs the variable — M0–M2 all treat
+ * their optional settings as feature switches instead (see `app.ts`), so the
+ * first caller arrives with the M5 deploy checks.
+ *
+ * Only strings can be "missing": every numeric setting has a default, and 0 is
+ * a legitimate value for several of them.
  */
 export function requireConfig(config: AppConfig, keys: Array<keyof AppConfig>): void {
-  const missing = keys.filter((key) => config[key] === undefined || config[key] === '');
+  const missing = keys.filter((key) => {
+    const value = config[key];
+    return value === undefined || (typeof value === 'string' && value.trim() === '');
+  });
   if (missing.length > 0) {
     const envNames = missing.map((key) => CONFIG_ENV_NAMES[key] ?? String(key));
     throw new Error(

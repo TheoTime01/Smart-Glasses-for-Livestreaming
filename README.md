@@ -96,6 +96,12 @@ and they are usually reachable through a public tunnel. Set `CONTROL_TOKEN` to a
 and the page will ask for it once and remember it. Left unset, the API is open to anyone who can
 reach the URL, and the server says so loudly at startup. Glasses-side pairing auth arrives in M2.
 
+The token travels in an `x-control-token` header. `GET /api/streams/:id/qr.png` also accepts
+`?control_token=` because an `<img src>` cannot send a header — no other route does, since query
+strings end up in access logs, proxy logs and `Referer` headers. That QR encodes the stream key
+itself, so treat its URL as a credential: it is served `no-store`, but a screenshot of it is a
+working ingest key.
+
 A missing `API_VIDEO_KEY` is a supported mode: `/api/streams` answers `503 not_configured` and the
 M0 probe keeps working. A key that is present but *invalid* stops the server at startup instead of
 failing on every click.
@@ -110,6 +116,8 @@ receives a stream key.
 position and Up/Down changes the value; Enter confirms. The code is single use with a 5 minute TTL,
 claims are rate limited, and the server returns a device token that lives in `localStorage` as
 `mrbd.device_token`. Revoke any device from `/control/` and its token dies on the next request.
+Tokens also carry a 90 day expiry, so a pair of glasses that is lost rather than revoked does not
+stay authorised forever; an expired token lands back on the pairing screen.
 
 **Two separate audiences, two separate keys.** `/api/streams*` uses the control token and returns
 ingest credentials. `/api/glasses/*` uses a device token and returns only id, name, public and
@@ -127,9 +135,10 @@ npm run test:all     # unit + e2e
 
 The suite pins the properties the runtime makes non-negotiable: the document never scrolls on any
 screen, every `.focusable` is reachable with arrow keys alone, focus is never lost to `<body>` and
-always paints a visible ring, the list paginates rather than scrolls, Escape returns from the
-viewer, a revoked device lands back on the pairing screen, and playback falls back to the relay
-strategy when MSE and native HLS are stubbed away. It runs against a stubbed api.video
+always paints a visible ring, the list paginates rather than scrolls and Up/Down crosses a page
+boundary instead of wrapping inside one, Escape returns from the viewer, a revoked device lands
+back on the pairing screen, and playback falls back to the relay strategy when MSE and native HLS
+are stubbed away. It runs against a stubbed api.video
 (`e2e/apivideo-stub.mjs`), so it is offline, free and side-effect free.
 
 ## Endpoints

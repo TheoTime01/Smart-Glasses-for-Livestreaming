@@ -282,8 +282,28 @@ describe('stream API guards', () => {
     });
     expect(allowed.statusCode).toBe(200);
 
-    // The QR <img> cannot send a header, so a query parameter is accepted too.
+    // A query-string token lands in access and proxy logs, so it is refused
+    // everywhere except the one route that cannot send a header.
     const viaQuery = await app.inject({ method: 'GET', url: '/api/streams?control_token=sekret' });
-    expect(viaQuery.statusCode).toBe(200);
+    expect(viaQuery.statusCode).toBe(401);
+  });
+
+  it('accepts the control token in the query string for the QR image only', async () => {
+    await build({ controlToken: 'sekret' });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/streams',
+      payload: { name: 'One' },
+      headers: { 'x-control-token': 'sekret' },
+    });
+    const id = created.json<{ id: string }>().id;
+
+    // The QR is loaded through an <img src>, which cannot carry a header.
+    const qr = await app.inject({ method: 'GET', url: `/api/streams/${id}/qr.png?control_token=sekret` });
+    expect(qr.statusCode).toBe(200);
+    expect(qr.headers['content-type']).toBe('image/png');
+
+    const wrong = await app.inject({ method: 'GET', url: `/api/streams/${id}/qr.png?control_token=nope!!` });
+    expect(wrong.statusCode).toBe(401);
   });
 });

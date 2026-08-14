@@ -4,9 +4,10 @@ import { fileURLToPath } from 'node:url';
 
 import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 
 import { ApiVideoClient } from './apivideo/client.js';
+import { ApiVideoError } from './apivideo/types.js';
 import { devicesStorePath, PairingService } from './auth/pairing.js';
 import type { AppConfig } from './config.js';
 import { ProbeStore } from './probe/store.js';
@@ -33,6 +34,30 @@ export async function buildApp({ config, logger = true, fetchImpl }: BuildAppOpt
     // the forwarding headers for `request.ip` in probe reports.
     trustProxy: true,
     bodyLimit: 256 * 1024,
+  });
+
+  /**
+   * Registered on the root instance, not inside the stream plugin: the glasses
+   * routes call api.video too, and an ApiVideoError escaping to Fastify's
+   * default handler would reach the HUD as an opaque 500.
+   */
+  fastify.setErrorHandler((error: FastifyError, request, reply) => {
+    if (error instanceof ApiVideoError) {
+      request.log.error({ err: error, status: error.status, detail: error.detail }, 'api.video call failed');
+      const status = error.status === 404 ? 404 : error.status === 400 ? 400 : 502;
+      return reply.code(status).send({
+        error: 'api_video_error',
+        message: error.message,
+        detail: error.detail || undefined,
+      });
+    }
+    // Fastify's own errors (bad JSON, payload too large) carry a usable status.
+    const status = typeof error.statusCode === 'number' && error.statusCode >= 400 ? error.statusCode : 500;
+    request.log.error({ err: error }, 'unhandled error');
+    return reply.code(status).send({
+      error: status === 500 ? 'internal_error' : (error.code ?? 'request_error'),
+      message: status === 500 ? 'Unexpected server error.' : error.message,
+    });
   });
 
   const store = new ProbeStore(config.probeLogDir, config.probeMemoryLimit);
@@ -92,9 +117,10 @@ export async function buildApp({ config, logger = true, fetchImpl }: BuildAppOpt
 
   await fastify.register(pairingRoutes, { config, pairing, service });
 
+  // Reports what is actually wired up. A hardcoded milestone string would start
+  // lying the moment the next one lands.
   fastify.get('/api/health', async () => ({
     status: 'ok',
-    milestone: 'M2',
     apiVideo: service ? { configured: true, environment: config.apiVideoEnv } : { configured: false },
     pairing: { configured: Boolean(pairing) },
     controlTokenRequired: Boolean(config.controlToken),

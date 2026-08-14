@@ -19,8 +19,11 @@
     screen: 'pair',
     digits: [0, 0, 0, 0, 0, 0],
     streams: [],
-    page: 0,
+    /** Index into state.streams, NOT into the visible page. The page is derived
+     *  from it, so a resize that changes how many rows fit keeps the wearer on
+     *  the same stream instead of jumping. */
     selected: 0,
+    page: 0,
     current: null,
   };
 
@@ -130,7 +133,13 @@
       screens[key].classList.toggle('hidden', key !== name);
     });
     var first = focusables()[0];
-    if (first) first.focus();
+    if (first) {
+      first.focus();
+    } else if (document.activeElement && typeof document.activeElement.blur === 'function') {
+      // Nothing to focus yet (an empty list). Drop focus rather than leave it
+      // on a control of the screen we just hid.
+      document.activeElement.blur();
+    }
   }
 
   /** Focusable elements of the active screen, in DOM order. */
@@ -201,11 +210,19 @@
     return Math.max(1, Math.floor(height / ROW_HEIGHT));
   }
 
+  function pageCount() {
+    return Math.max(1, Math.ceil(state.streams.length / rowsPerPage()));
+  }
+
   function renderList() {
     var perPage = rowsPerPage();
-    var pageCount = Math.max(1, Math.ceil(state.streams.length / perPage));
-    if (state.page > pageCount - 1) state.page = pageCount - 1;
-    if (state.page < 0) state.page = 0;
+
+    if (state.selected > state.streams.length - 1) state.selected = state.streams.length - 1;
+    if (state.selected < 0) state.selected = 0;
+
+    // The page follows the selection, so it can never point somewhere the
+    // selected stream is not.
+    state.page = Math.min(Math.floor(state.selected / perPage), pageCount() - 1);
 
     var start = state.page * perPage;
     var visible = state.streams.slice(start, start + perPage);
@@ -254,13 +271,14 @@
       if (offset === 0) row.dataset.first = 'true';
     });
 
+
     els.listPager.textContent =
       state.streams.length <= perPage
         ? state.streams.length + ' stream' + (state.streams.length === 1 ? '' : 's')
         : start + 1 + '–' + Math.min(start + perPage, state.streams.length) + ' of ' + state.streams.length;
 
     var rows = els.streamList.querySelectorAll('.stream-row');
-    var target = rows[Math.min(state.selected, rows.length - 1)];
+    var target = rows[state.selected - start];
     if (target && state.screen === 'list') target.focus();
   }
 
@@ -271,7 +289,6 @@
     api('/api/glasses/streams')
       .then(function (data) {
         state.streams = data.streams;
-        state.page = 0;
         state.selected = 0;
         els.listStatus.textContent = data.streams.length === 0 ? 'nothing to watch yet' : 'Enter to watch';
         renderList();
@@ -373,16 +390,23 @@
     }
 
     if (state.screen === 'list') {
+      if (state.streams.length === 0) return;
+
       if (key === 'ArrowUp' || key === 'ArrowDown') {
-        moveFocus(key === 'ArrowUp' ? -1 : 1);
-        var rows = Array.prototype.slice.call(els.streamList.querySelectorAll('.stream-row'));
-        state.selected = Math.max(0, rows.indexOf(document.activeElement));
+        // Walks the whole list, not just the visible page: stepping off the
+        // bottom row turns the page instead of wrapping back to the top of it.
+        var step = key === 'ArrowDown' ? 1 : -1;
+        state.selected = (state.selected + step + state.streams.length) % state.streams.length;
       } else {
         // No scrolling anywhere: overflow becomes pages.
-        state.page += key === 'ArrowLeft' ? -1 : 1;
-        state.selected = 0;
-        renderList();
+        var perPage = rowsPerPage();
+        var pages = pageCount();
+        var page = state.page + (key === 'ArrowLeft' ? -1 : 1);
+        if (page < 0) page = pages - 1;
+        if (page > pages - 1) page = 0;
+        state.selected = Math.min(page * perPage, state.streams.length - 1);
       }
+      renderList();
       return;
     }
 
