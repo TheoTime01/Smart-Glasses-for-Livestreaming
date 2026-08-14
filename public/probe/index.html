@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="description" content="Capability probe for the api.video live viewer: reports whether video, MSE, WebSocket, blob and streaming APIs work on Meta Ray-Ban Display." />
+    <meta name="mrbd-web-app-capable" content="yes" />
+    <meta name="viewport" content="width=600, height=600, initial-scale=1.0, user-scalable=no" />
+    <title>Capability probe</title>
+    <link rel="icon" type="image/png" sizes="128x128" href="/favicon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="stylesheet" href="/probe/probe.css" />
+  </head>
+  <body>
+    <main class="app-root" id="app">
+      <header class="header">
+        <h1 class="title">Capability probe</h1>
+        <p class="status" id="status" role="status" aria-live="polite">starting…</p>
+      </header>
+
+      <section class="list" id="list" aria-label="Capability check results"></section>
+
+      <footer class="footer">
+        <p class="pager" id="pager">page 1 of 1</p>
+        <div class="actions">
+          <button type="button" class="focusable action" id="btn-rerun" data-action="rerun">
+            <span class="content">Run again</span>
+          </button>
+          <button type="button" class="focusable action" id="btn-send" data-action="send">
+            <span class="content">Send report</span>
+          </button>
+        </div>
+        <p class="hint">&#9668;&#9658; page &nbsp;&#9650;&#9660; button &nbsp;&#9166; activate</p>
+      </footer>
+    </main>
+
+    <!-- Kept in the layout (not display:none) because some runtimes refuse to
+         load or play media in a fully hidden element. -->
+    <video id="probe-video" class="offscreen" muted playsinline preload="auto"></video>
+    <canvas id="probe-canvas" class="offscreen" width="64" height="64"></canvas>
+    <img id="probe-img" class="offscreen" alt="" />
+
+    <script src="/probe/probe.js"></script>
+  </body>
+</html>

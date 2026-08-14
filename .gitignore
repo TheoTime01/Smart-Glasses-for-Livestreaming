@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+# package-lock.json is committed: this is a deployed app, so the Docker build
+# needs `npm ci` to install the exact tree that was tested.
+yarn.lock
+pnpm-lock.yaml
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Data and samples
+data/
+public/samples/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE and editor
+.vscode/
+.idea/
+.claude/
+.anthropic/
+*.swp
+*.swo
+*~
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Playwright
+test-results/
+playwright-report/
+.playwright/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Build caches
+.turbo/
+.eslintcache
+
+# OS files
+.DS_Store
+Thumbs.db

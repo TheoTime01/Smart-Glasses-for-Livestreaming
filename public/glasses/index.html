@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="description" content="Watch a live RTMP stream from api.video on Meta Ray-Ban Display, paired with a 6-digit code." />
+    <meta name="mrbd-web-app-capable" content="yes" />
+    <meta name="viewport" content="width=600, height=600, initial-scale=1.0, user-scalable=no" />
+    <title>Live viewer</title>
+    <link rel="icon" type="image/png" sizes="128x128" href="/favicon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="stylesheet" href="/glasses/glasses.css" />
+  </head>
+  <body>
+    <main class="app-root">
+      <!-- ------------------------------------------------------------ pair -->
+      <section class="screen" id="screen-pair" data-title="Pair">
+        <header class="header">
+          <h1 class="title">Pair these glasses</h1>
+          <p class="status" id="pair-status" role="status" aria-live="polite">
+            Open /control on your phone or laptop and press "Pair a device".
+          </p>
+        </header>
+
+        <div class="digits" id="digits" role="group" aria-label="6 digit pairing code">
+          <!-- Each digit is focusable so the D-pad can select it directly. -->
+          <button type="button" class="focusable digit" data-index="0" aria-label="digit 1">0</button>
+          <button type="button" class="focusable digit" data-index="1" aria-label="digit 2">0</button>
+          <button type="button" class="focusable digit" data-index="2" aria-label="digit 3">0</button>
+          <button type="button" class="focusable digit" data-index="3" aria-label="digit 4">0</button>
+          <button type="button" class="focusable digit" data-index="4" aria-label="digit 5">0</button>
+          <button type="button" class="focusable digit" data-index="5" aria-label="digit 6">0</button>
+        </div>
+
+        <p class="hint">&#9664;&#9654; digit &nbsp; &#9650;&#9660; value &nbsp; &#9166; confirm</p>
+
+        <div class="row">
+          <button type="button" class="focusable action" data-action="pair-submit">
+            <span class="content">Confirm code</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ------------------------------------------------------------ list -->
+      <section class="screen hidden" id="screen-list" data-title="Streams">
+        <header class="header">
+          <h1 class="title">Streams</h1>
+          <p class="status" id="list-status" role="status" aria-live="polite">loading…</p>
+        </header>
+
+        <div class="list" id="stream-list"></div>
+
+        <footer class="list-footer">
+          <p class="pager" id="list-pager"></p>
+          <p class="hint">&#9664;&#9654; page &nbsp; &#9650;&#9660; select &nbsp; &#9166; watch</p>
+        </footer>
+      </section>
+
+      <!-- ---------------------------------------------------------- viewer -->
+      <section class="screen hidden" id="screen-viewer" data-title="Viewer">
+        <header class="header">
+          <h1 class="title" id="viewer-name">Stream</h1>
+          <p class="status" id="viewer-status" role="status" aria-live="polite"></p>
+        </header>
+
+        <div class="viewer-body">
+          <p class="viewer-note" id="viewer-note"></p>
+        </div>
+
+        <div class="row">
+          <button type="button" class="focusable action" data-action="viewer-back">
+            <span class="content">Back to streams</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ----------------------------------------------------------- error -->
+      <section class="screen hidden" id="screen-error" data-title="Problem">
+        <header class="header">
+          <h1 class="title">Something went wrong</h1>
+        </header>
+        <p class="error-text" id="error-text"></p>
+        <div class="row">
+          <button type="button" class="focusable action" data-action="error-retry">
+            <span class="content">Try again</span>
+          </button>
+          <button type="button" class="focusable action" data-action="error-unpair">
+            <span class="content">Unpair</span>
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <script src="/glasses/glasses.js"></script>
+  </body>
+</html>
