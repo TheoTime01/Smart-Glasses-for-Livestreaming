@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
-package-lock.json
+# package-lock.json is committed: this is a deployed app, so the Docker build
+# needs `npm ci` to install the exact tree that was tested.
 yarn.lock
 pnpm-lock.yaml
 
